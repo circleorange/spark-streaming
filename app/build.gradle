@@ -1,0 +1,27 @@
+plugins {
+    id 'application'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.1'
+
+    implementation 'com.google.guava:guava:31.1-jre'
+
+    implementation 'org.apache.spark:spark-core_2.12:3.5.1'
+    implementation 'org.apache.spark:spark-streaming_2.12:3.5.1'
+}
+
+application {
+    mainClass = 'spark.streaming.App'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+targetCompatibility = 1.8
+sourceCompatibility = 1.8
