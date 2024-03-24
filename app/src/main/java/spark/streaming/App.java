@@ -1,6 +1,8 @@
 package spark.streaming;
 
+import java.time.Duration;
 import java.util.Arrays;
+import java.util.stream.Collectors;
 
 import org.apache.spark.SparkConf;
 import org.apache.spark.streaming.Durations;
@@ -30,6 +32,8 @@ public class App {
         // print sample
         tweets.print();
 
+        // 2/occurrances
+
         // extract hashtags and usernames
         JavaDStream<String> tagsAndUsernames = tweets
             .flatMap(tweet -> Arrays.asList(tweet.split(" ")).iterator())
@@ -39,17 +43,54 @@ public class App {
         JavaPairDStream<String, Integer> tagsAndUsernameCount = tagsAndUsernames
             .mapToPair(word -> new Tuple2<>(word, 1))
             .reduceByKeyAndWindow(
-                (Integer i, Integer j) -> i + j,
-                Durations.seconds(6), // window length
-                Durations.seconds(2)); // sliding interval
+                (Integer i, Integer j) -> i + j, // reduce function
+                Durations.seconds(6), // window duration
+                Durations.seconds(2) ); // slide duration
         
         // print count of occurrances
         tagsAndUsernameCount.print();
+
+        // 3/ highest frequency hashtag
+
+        JavaDStream<String> tags = tweets
+            // split the incoming tweet data with space delimiter
+            .flatMap( t -> Arrays.asList( t.split(" ")).iterator()) 
+            // extract strings starting with hashtag
+            .filter( s -> s.startsWith("#")); 
+        
+        // count occurrances of each tag in the data stream
+        JavaPairDStream<String, Integer> tagCount = tags
+            // map each tag occurrance to 1, i.e. single occurrance
+            .mapToPair( t -> new Tuple2<>(t, 1)) 
+            // aggregate occurrances by tag (key) over 6 second window that slides every 2 seconds
+            .reduceByKeyAndWindow( 
+                Integer::sum, Durations.seconds(6), Durations.seconds(2));
+
+        // identify highest frequency tag in each sliding window
+        JavaPairDStream<String, Integer> tagHighestFrequency = tagCount
+            .transformToPair( rdd -> { return jssc
+                // retrieve Spark context JavaStreamingContext
+                .sparkContext()
+                // convert Java list returned from `take()` to RDD
+                .parallelizePairs( rdd
+                    // swap (hashtag, count) to (count, hashtag) - needed for ordering data by key
+                    .mapToPair(Tuple2::swap)
+                    // order data by key in descending order
+                    .sortByKey(false)
+                    // swap back to original structure; (hashtag, count)
+                    .mapToPair(Tuple2::swap)
+                    // take the first (i.e. highest) result
+                    .take(1) );
+            });
+
+        tagHighestFrequency.print();
+
 
         // start computation
         jssc.start();
 
         // close the streaming context after computation is finished
         jssc.awaitTermination();
+        jssc.close();
     }
 }
